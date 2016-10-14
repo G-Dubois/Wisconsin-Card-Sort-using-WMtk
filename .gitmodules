@@ -1,0 +1,3 @@
+[submodule "wmtk"]
+	path = wmtk
+	url = https://github.com/jlphillipsphd/wmtk.git
