@@ -85,26 +85,29 @@ int main(int argc, char* argv[]) {
 
 	/**** Get input from command line arguments ****/
 	switch (argc) {
-	// wcst
-	case 1:
-		break;
-	// wcst [seed]
 	case 2:
 		seed = atoi(argv[1]);
 		srand(seed);
 		break;
-	// wcst seed [dimensions] [features]
 	case 4:
 		seed = atoi(argv[1]);
 		srand(seed);
-		numberOfDimensions = atoi(argv[2]);
-		numberOfFeatures = atoi(argv[3]);
-		numberOfCards = pow(numberOfFeatures, numberOfDimensions);
+		if (argv[2] == "debug"){
+			debug = true;
+			numberEpisodes = 100;
+		} else {
+			numberOfDimensions = atoi(argv[2]);
+			numberOfFeatures = atoi(argv[3]);
+			numberOfCards = pow(numberOfFeatures, numberOfDimensions);
+		}
 		break;
 	default:
 		printf("Usage: wcst [seed [dimensions features]]\n");
 		return 9;
 	}
+
+	//printf("big*red*ball isRule: %d\n", isARule("big*red*ball"));
+	//printf("ball isRule: %d\n", isARule("ball"));
 
 
 	/**** Initialize working memory ****/
@@ -133,20 +136,19 @@ int main(int argc, char* argv[]) {
 		bool cardIsAMatch = cardMatchesRule(currentCard, rule);
 		bool chooseCorrect;
 
+		// Choose the pile to place card in
+		if (!isARule(wm.queryWorkingMemory(0)) || wm.queryWorkingMemory(0) == "I") {
+			chooseCorrect = (bool) (rand() % 2);
+		} else {
+			chooseCorrect = cardMatchesRule(currentCard, wm.queryWorkingMemory(0));
+		}
+
 		if (debug) {
 			printf("Rule: %s\n", rule.c_str());
 			printf("Card: %s\n", currentCard.c_str());
-			printf("WM Contents: %s\n", wm.queryWorkingMemory()[0].c_str());
-		}
-
-		// Choose the pile to place card in
-		if (isARule(wm.queryWorkingMemory()[0]) || wm.queryWorkingMemory()[0] == "I") {
-			chooseCorrect = (bool) (rand() % 2);
-		} else {
-			chooseCorrect = false;
-			if (currentCard == wm.queryWorkingMemory()[0]) {
-				chooseCorrect = true;
-			}
+			printf("Card Matches Rule: %d\n\n", cardIsAMatch);
+			printf("WM Contents: %s\n", wm.queryWorkingMemory(0).c_str());
+			printf("Chosen pile: %d\n\n\n", chooseCorrect);
 		}
 
 		// Check for correct move
@@ -238,8 +240,8 @@ bool cardMatchesRule(string card, string rule) {
 bool isARule(string concept) {
 
 	if (concept.find("*") == string::npos) {
-		return false;
+		return true;
 	}
 
-	return true;
+	return false;
 }
