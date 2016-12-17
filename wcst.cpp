@@ -27,9 +27,12 @@
 //
 
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <cmath>
 #include "wmtk/WMtk.h"
+#include "wmtk/hrr/hrrengine.h"
+#include "wmtk/hrr/hrrOperators.h"
 
 using namespace std;
 
@@ -37,17 +40,21 @@ using namespace std;
 //  Global variables  //
 ////////////////////////
 
-// The number of dimensions to attend to. Eg. color, shape, size, number
-int numberOfDimensions = 2;
-
-// The number of features used in each dimension: number of colors, shapes, sizes, etc.
-int numberOfFeatures = 3;
-
-// The number of possible cards
-int numberOfCards = pow(numberOfFeatures, numberOfDimensions);
-
 // Random seed for repeatability
 int seed = 0;
+
+// The number of dimensions to attend to. Eg. color, shape, size, number
+int ndims = 2;
+
+// The number of features used in each dimension: number of colors, shapes, sizes, etc.
+int nfeatures = 3;
+
+// The number of possible cards
+int ncards = pow(nfeatures, ndims);
+
+// The length of the HRRs
+int n = 64;
+int numberOfChunks = 1;		// Only use 1 WM slot
 
 // TD values
 double alpha    = 0.9;			// TD learning rate
@@ -55,11 +62,8 @@ double discount = 0.5;			// TD discount
 double lambda   = 0.1;			// Eligibility trace trickle rate
 double epsilon  = 0.05;			// Epsilon soft policy
 
-int vectorSize = 1024;		// The length of the HRRs
-int numberOfChunks = 1;		// Only use 1 WM slot
-
 // Simulation variables
-int numberEpisodes = 200000;
+int nsteps = 1000000;
 int numberOfCorrectTries = 0;
 int numberOfIncorrectTries = 0;
 
@@ -94,11 +98,11 @@ int main(int argc, char* argv[]) {
 		srand(seed);
 		if (argv[2] == "debug"){
 			debug = true;
-			numberEpisodes = 100;
+			nsteps = 100;
 		} else {
-			numberOfDimensions = atoi(argv[2]);
-			numberOfFeatures = atoi(argv[3]);
-			numberOfCards = pow(numberOfFeatures, numberOfDimensions);
+			ndims = atoi(argv[2]);
+			nfeatures = atoi(argv[3]);
+			ncards = pow(nfeatures, ndims);
 		}
 		break;
 	default:
@@ -106,23 +110,52 @@ int main(int argc, char* argv[]) {
 		return 9;
 	}
 
-	//printf("big*red*ball isRule: %d\n", isARule("big*red*ball"));
-	//printf("ball isRule: %d\n", isARule("ball"));
-
 
 	/**** Initialize working memory ****/
 	WorkingMemory wm(alpha,
-					 discount,
-					 lambda,
-					 epsilon,
-					 vectorSize,
-					 numberOfChunks );
+			 discount,
+			 lambda,
+			 epsilon,
+			 n,
+			 numberOfChunks );
 	
 	/**** Set the current rule for the task ****/
 	string rule = randomRule();
 
 	/**** Create the deck of cards for the task ****/
-	findCombs(0, numberOfDimensions, numberOfFeatures, "");
+	findCombs(0, ndims, nfeatures, "");
+
+	/**** Insert all cards into working memory and print their hrrs ****/
+	ofstream fout;
+	fout.open("temp_hrrs_c.dat");
+	printf("Number of cards: %d\t ncards: %d\n", (int)cards.size(), ncards);
+	for (string card : cards) {
+		cout << card << "\n";
+		wm.hrrengine.query(card);
+	}
+	for (pair<string, HRR> concept : wm.hrrengine.conceptMemory) {
+		if (isARule(concept.first) && concept.first != "I") {
+			cout << "Rule: " << concept.first << "\n";
+			fout << concept.second << "\n";
+		}
+	}
+	fout.close();
+
+	fout.open("temp_weights_c.dat");
+	fout << wm.weights << "\n";
+	fout.close();
+
+	/**** Set up percept sequence ****/
+	int percepts[nsteps][2];
+	fout.open("temp_percepts_c.dat");
+	for (int i = 0; i < nsteps; i++) {
+		for (int d = 0; d < ndims; d++) {
+			percepts[i][d] = rand()%nfeatures;
+			fout << percepts[i][d] << " ";
+		}
+		fout << "\n";
+	}
+	fout.close();
 
 	/**** Get the first card ****/
 	string currentCard = randomCard();
@@ -131,7 +164,7 @@ int main(int argc, char* argv[]) {
 	wm.initializeEpisode(currentCard);
 
 	// Main loop of task
-	for (int timestep = 0; timestep <= numberEpisodes; timestep++) {
+	for (int timestep = 0; timestep <= nsteps; timestep++) {
 
 		bool cardIsAMatch = cardMatchesRule(currentCard, rule);
 		bool chooseCorrect;
@@ -205,11 +238,11 @@ void findCombs(int d, int D, int F, string combSoFar) {
 }
 
 string randomRule() {
-	return dimensions[rand() % numberOfDimensions][rand() % numberOfFeatures];
+	return dimensions[rand() % ndims][rand() % nfeatures];
 }
 
 string randomCard() {
-	return cards[ rand() % numberOfCards];
+	return cards[ rand() % ncards];
 }
 
 bool cardMatchesRule(string card, string rule) {
