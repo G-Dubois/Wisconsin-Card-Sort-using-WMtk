@@ -29,6 +29,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <queue>
 #include <cmath>
 #include "wmtk/WMtk.h"
 #include "wmtk/hrr/hrrengine.h"
@@ -62,8 +63,11 @@ double discount = 0.5;			// TD discount
 double lambda   = 0.1;			// Eligibility trace trickle rate
 double epsilon  = 0.05;			// Epsilon soft policy
 
+double default_reward = 0.0;
+double correct_reward = 1.0;
+
 // Simulation variables
-int nsteps = 1000000;
+int nsteps = 5;
 int numberOfCorrectTries = 0;
 int numberOfIncorrectTries = 0;
 
@@ -82,6 +86,9 @@ void printAllCombinations(string* array[], int D, int N);
 void findCombs(int, int, int, string);
 string randomRule();
 string randomCard();
+string changeRule(string oldRule);
+string changeRule(vector<int>);
+string drawCard(vector<int>);
 bool cardMatchesRule(string, string);
 bool isARule(string);
 
@@ -96,7 +103,7 @@ int main(int argc, char* argv[]) {
 	case 4:
 		seed = atoi(argv[1]);
 		srand(seed);
-		if (argv[2] == "debug"){
+		if (strncmp(argv[2], "debug", 6)){
 			debug = true;
 			nsteps = 100;
 		} else {
@@ -118,53 +125,80 @@ int main(int argc, char* argv[]) {
 			 epsilon,
 			 n,
 			 numberOfChunks );
-	
-	/**** Set the current rule for the task ****/
-	string rule = randomRule();
+
+	wm.WMdebug = true;
 
 	/**** Create the deck of cards for the task ****/
 	findCombs(0, ndims, nfeatures, "");
 
 	/**** Insert all cards into working memory and print their hrrs ****/
 	ofstream fout;
+	printf("Saving HRR data...");
 	fout.open("temp_hrrs_c.dat");
-	printf("Number of cards: %d\t ncards: %d\n", (int)cards.size(), ncards);
 	for (string card : cards) {
-		cout << card << "\n";
 		wm.hrrengine.query(card);
 	}
 	for (pair<string, HRR> concept : wm.hrrengine.conceptMemory) {
 		if (isARule(concept.first) && concept.first != "I") {
-			cout << "Rule: " << concept.first << "\n";
 			fout << concept.second << "\n";
 		}
 	}
 	fout.close();
+	printf("done!\n");
 
+	printf("Saving weight data...");
 	fout.open("temp_weights_c.dat");
 	fout << wm.weights << "\n";
 	fout.close();
+	printf("done!\n");
 
 	/**** Set up percept sequence ****/
-	int percepts[nsteps][2];
+	printf("Saving percept data...");
+	vector<vector<int>> percepts;
 	fout.open("temp_percepts_c.dat");
 	for (int i = 0; i < nsteps; i++) {
+		vector<int> percept;
 		for (int d = 0; d < ndims; d++) {
-			percepts[i][d] = rand()%nfeatures;
-			fout << percepts[i][d] << " ";
+			percept.push_back(rand()%nfeatures);
+			fout << percept[d] << " ";
 		}
+		percepts.push_back(percept);
 		fout << "\n";
 	}
 	fout.close();
+	printf("done!\n");
+
+	/**** Set up random rules ****/
+	printf("Saving rule data...");
+	queue<vector<int>> rules;
+	fout.open("temp_rules_c.dat");
+	for (int i = 0; i < nsteps; i++) {
+		vector<int> rule;
+		rule.push_back(rand() % nfeatures);
+		rule.push_back(rand() % ndims);
+		fout << rule[0] << " " << rule[1] << "\n";
+		rules.push(rule);
+	}
+	fout.close();
+	printf("done!\n");
+	
+	/**** Set the current rule for the task ****/
+	printf("Rule change: [%d %d]\n", rules.front()[0], rules.front()[1]);
+	string rule = changeRule(rules.front());
+	rules.pop();
 
 	/**** Get the first card ****/
-	string currentCard = randomCard();
+	string currentCard = drawCard(percepts[0]);
 
 	// Initialize working memory for the task
 	wm.initializeEpisode(currentCard);
 
+	double reward = 0;
+
 	// Main loop of task
-	for (int timestep = 0; timestep <= nsteps; timestep++) {
+	for (int timestep = 1; timestep < nsteps; timestep++) {
+
+		wm.step(currentCard, reward);
 
 		bool cardIsAMatch = cardMatchesRule(currentCard, rule);
 		bool chooseCorrect;
@@ -187,33 +221,36 @@ int main(int argc, char* argv[]) {
 		// Check for correct move
 		if (cardIsAMatch == chooseCorrect) {
 			numberOfCorrectTries++;
-			wm.step(currentCard, 1.0);
+			reward = correct_reward;
+			if (debug) {
+				printf("Loaded correct rule...\n");
+			}
 		} else {
 			numberOfIncorrectTries++;
 			numberOfCorrectTries = 0;
-			wm.step(currentCard, 0.0);
+			reward = default_reward;
 		}
+
+		//if (numberOfCorrectTries >= 90) {
+			debug = true;
+		//} else {
+		//	debug = false;
+		//}
 
 		// Change the rule after 100 correct tries
 		if ( numberOfCorrectTries > 100 ) {
 			numberOfCorrectTries = 0;
 
-			string newRule = randomRule();
-			while (newRule == rule) {
-				newRule = randomRule();
-			}
-			rule = newRule;
+			vector<int> r = rules.front();
+			rule = changeRule(r);
+			rules.pop();
 
-			printf("Timestep: %d - new rule [%s] - incorrect tries [%d]\n", timestep, rule.c_str(), numberOfIncorrectTries);
+			printf("Timestep: %d - new rule [%d %d] ""\n", timestep, r[0], r[1]);
 			numberOfIncorrectTries = 0;
 		}
 
 		// Draw a new card
-		string newCard = randomCard();
-		while (newCard == currentCard) {
-			newCard = randomCard();
-		}
-		currentCard = newCard;
+		currentCard = drawCard(percepts[timestep]);
 
 		if (timestep % 1000 == 0) {
 			printf("Timestep: %d - failures [%d] - successes [%d]\n", timestep, numberOfIncorrectTries, numberOfCorrectTries);
@@ -240,9 +277,31 @@ void findCombs(int d, int D, int F, string combSoFar) {
 string randomRule() {
 	return dimensions[rand() % ndims][rand() % nfeatures];
 }
+string changeRule(string oldRule) {
+	int d, f;
+	do {
+		d = rand() % ndims;
+		f = rand() % nfeatures;
+	} while (dimensions[d][f] == oldRule);
+	printf("Rule change: [%d %d]\n", d, f);
+	return dimensions[d][f];
+}
+
+string changeRule(vector<int> rule) {
+	return dimensions[rule[1]][rule[0]];
+}
 
 string randomCard() {
 	return cards[ rand() % ncards];
+}
+
+string drawCard(vector<int> features) {
+	string card = dimensions[0][features[0]];
+	for (int i = 1; i < features.size(); i++) {
+		card += "*" + dimensions[i][features[i]];
+	}
+
+	return card;
 }
 
 bool cardMatchesRule(string card, string rule) {

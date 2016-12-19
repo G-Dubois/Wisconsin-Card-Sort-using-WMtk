@@ -16,7 +16,7 @@ ndims <-2
 nfeatures <- 3
 ## The total number of possible cards
 ncards <- nfeatures^ndims
-print(sprintf("ncards: %d", ncards))
+#print(sprintf("ncards: %d", ncards))
 
 ## Length of the HRRs
 n <- 64
@@ -30,12 +30,12 @@ features <- replicate(ndims,replicate(nfeatures,hrr(n,normalized=TRUE)))
 write(features,file="temp_hrrs.dat",ncolumns=n)
 features[,,] <- scan("temp_hrrs_c.dat")
 
-for (x in seq(1,ndims)) {
-    for (y in seq(1,nfeatures)) {
-        print(sprintf("[%d %x] = ",y,x))
-        print(features[,y,x])
-    }
-}
+#for (x in seq(1,ndims)) {
+#    for (y in seq(1,nfeatures)) {
+#        print(sprintf("[%d %x] = ",y,x))
+#        print(features[,y,x])
+#    }
+#}
 
 ## Internal states need to be unique even
 ## though they signal items in the
@@ -175,14 +175,20 @@ make_rep <- function(input,wm) {
                                 map(wm,wm_metas))))
 }
 
+# Set up the ruleset
+rules <- read.table("temp_rules_c.dat",header=FALSE,sep=" ")+1
+rulenum = 1
+
 ## Set up the current rule
-rule <- c(sample(nfeatures,1),sample(ndims,1))
+#rule <- c(sample(nfeatures,1),sample(ndims,1))
+rule <- c(rules[rulenum,1], rules[rulenum,2])
+rulenum <- rulenum + 1
 switches <- c(1,1)
 print(sprintf("Rule change: [%d %d]",rule[1],rule[2]))
 
 ## Set the maximum number of presentations
 ## before we quit
-nsteps <- 1000000
+nsteps <- 5
 
 ## Percepts
 percepts <- replicate(nsteps,sample(nfeatures,ndims,replace=TRUE))
@@ -321,19 +327,21 @@ for (timestep in seq(1,nsteps)) {
     ## Change the rule!!
     if (count > 100) {
         count <- 0
-        new_rule <- rule
-        while (all(new_rule == rule))
-            new_rule <- c(sample(nfeatures,1),sample(ndims,1))
-        rule <- new_rule
-        switches <- c(switches,timestep)
+        #new_rule <- rule
+        #while (all(new_rule == rule))
+        #    new_rule <- c(sample(nfeatures,1),sample(ndims,1))
+        #rule <- new_rule
+        rule <- c(rules[rulenum,1], rules[rulenum,2])
+	rulenum <- rulenum + 1
+	switches <- c(switches,timestep)
         print(sprintf("Timestep: %d - new rule [%d %d]",timestep,rule[1],rule[2]))
     }
 
     ## Getting close, so print things out
-    if (count > 90)
+    #if (count > 90)
         debug <- TRUE
-    else
-        debug <- FALSE
+    #else
+    #    debug <- FALSE
     
     ## Store previous information...
     previous <- current
